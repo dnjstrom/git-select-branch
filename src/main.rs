@@ -17,17 +17,29 @@ fn main() -> std::io::Result<()> {
     options.push(current_branch);
     options.extend(all_branches);
 
-    let selection = Select::with_theme(&ColorfulTheme::default())
+    let result = Select::with_theme(&ColorfulTheme::default())
         .items(&options)
         .paged(true)
         .default(0)
-        .interact()
+        .with_prompt("Which branch would you like to switch to?")
+        .interact_opt()
         .expect("No selection");
 
-    let selected_branch = options[selection];
+    match result {
+        Some(selection) => {
+            let selected_branch = options[selection];
 
-    let checkout_command = format!("git checkout {}", selected_branch);
-    spawn_command(&checkout_command);
+            if selected_branch == current_branch {
+                println!("Remaining on branch \"{}\"", current_branch);
+                return Ok(());
+            }
+
+            println!("Switching to branch \"{}\"", selected_branch);
+            let checkout_command = format!("git checkout {}", selected_branch);
+            spawn_command(&checkout_command);
+        }
+        None => println!("Remaining on branch \"{}\"", current_branch),
+    }
 
     Ok(())
 }
