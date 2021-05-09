@@ -1,6 +1,7 @@
 use dialoguer::{theme::ColorfulTheme, Select};
 use std::process::Command;
 
+/// Tiny CLI utility to checkout a recent git branch interactively.
 fn main() -> std::io::Result<()> {
     let current_branch_output = exec_command("git rev-parse --abbrev-ref HEAD");
     let current_branch = current_branch_output.trim();
@@ -44,6 +45,7 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
+/// Executes a command in the appropriate shell of the os, returning the output on stdout.
 fn exec_command(command: &str) -> String {
     let output = if cfg!(target_os = "windows") {
         Command::new("cmd")
@@ -61,6 +63,9 @@ fn exec_command(command: &str) -> String {
     String::from_utf8(output.stdout).expect("Can't parse string as utf-8")
 }
 
+/// Spawns a command transparently in the appropriate shell of the os and waits until complete.
+///
+/// Any command output is redirected to parent stdout/stderr.
 fn spawn_command(command: &str) {
     let mut child = if cfg!(target_os = "windows") {
         Command::new("cmd")
