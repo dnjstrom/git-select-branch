@@ -29,12 +29,6 @@ fn main() -> std::io::Result<()> {
     match result {
         Some(selection) => {
             let selected_branch = options[selection];
-
-            if selected_branch == current_branch {
-                println!("Stayed on branch '{}'", current_branch);
-                return Ok(());
-            }
-
             let checkout_command = format!("git checkout {}", selected_branch);
             spawn_command(&checkout_command);
         }
