@@ -1,19 +1,30 @@
 # git-select-branch
 
-Tiny rust cli to make it easier to navigate between branches by letting you interactively select
-one to check out. Sorts branches aside from the current one by most recent commit.
+Tiny Rust CLI to checkout a recent git branch interactively.
 
 ![git-select-branch lets you select a recent branch interactively.](./screenshot.gif)
 
 
 ## Installation
 
-The package is currently only available as sources. 
+### Homebrew
+
+```bash
+brew tap dnjstrom/git-select-branch
+brew install git-select-branch
+```
+
+### Cargo
+
+```bash
+cargo install git-select-branch
+```
+
+### Sources
 
 ```bash
 git clone git@github.com:dnjstrom/git-select-branch.git
 cd git-select-branch
-cargo build --release
 cargo install --path .
 ```
 
@@ -26,4 +37,4 @@ Add the following section to your `~/.gitconfig`:
   select-branch = "!git-select-branch"
 ```
 
-Now you can simply type `git select-branch` to select between branches.
+Now you can simply type `git select-branch` to switch between branches.
