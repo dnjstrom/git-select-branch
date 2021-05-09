@@ -35,7 +35,6 @@ fn main() -> std::io::Result<()> {
                 return Ok(());
             }
 
-            println!("Switching to branch \"{}\"", selected_branch);
             let checkout_command = format!("git checkout {}", selected_branch);
             spawn_command(&checkout_command);
         }
