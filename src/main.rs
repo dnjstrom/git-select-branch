@@ -2,17 +2,17 @@ extern crate core;
 
 use std::env;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use dialoguer::{theme::ColorfulTheme, Select};
+use expect_exit::Expected;
 use git2::build::CheckoutBuilder;
 use git2::{BranchType, Commit, Reference, Repository};
 
 /// Tiny CLI utility to checkout a recent git branch interactively.
 fn main() -> Result<()> {
-    let current_dir =
-        env::current_dir().with_context(|| "Could not get current directory".to_string())?;
+    let current_dir = env::current_dir().or_exit_("Could not get current directory");
     let repo = Repository::discover(current_dir.as_path())
-        .with_context(|| format!("No git repository discovered in {:?}", current_dir.clone()))?;
+        .or_exit_(format!("No git repository discovered at {:?}", current_dir).as_str());
 
     let current_branch_owned = get_current_branch(&repo)?;
     let current_branch = current_branch_owned;
@@ -43,10 +43,13 @@ fn main() -> Result<()> {
 
 fn checkout(repo: Repository, branch_name: &String) -> Result<()> {
     let ref_name = format!("refs/heads/{}", branch_name);
+
     repo.set_head(&ref_name)
-        .with_context(|| format!("Could not set head to {}", ref_name))?;
+        .or_exit_(format!("Could not set head to {}", ref_name).as_str());
+
     repo.checkout_head(Some(&mut CheckoutBuilder::default()))
-        .with_context(|| format!("Unable to check out branch {}", branch_name))?;
+        .or_exit_(format!("Unable to check out branch {}", branch_name).as_str());
+
     Ok(())
 }
 
@@ -60,18 +63,21 @@ fn get_branch_options(sorted_branches: Vec<String>, current_branch: Option<&str>
         .collect();
 
     let mut options = Vec::new();
+
     match current_branch {
         Some(branch) => options.push(branch.to_string()),
         None => options.push("<no branch>".to_string()),
     }
+
     options.extend(all_branches);
+
     options
 }
 
 fn get_current_branch(repo: &Repository) -> Result<Option<String>> {
     Ok(repo
         .head()
-        .with_context(|| "Can't get repo head".to_string())?
+        .or_exit_("Can't get repo head")
         .shorthand()
         .map(|s| s.to_string()))
 }
@@ -82,6 +88,7 @@ fn get_sorted_branches(repo: &Repository) -> Result<Vec<String>> {
         .filter(|r| r.is_ok())
         .map(|r| r.unwrap().0.into_reference())
         .collect();
+
     let mut branch_name_and_commit: Vec<(String, Commit)> = branch_refs
         .iter()
         .filter(|r| r.shorthand().is_some() && r.peel_to_commit().is_ok())
@@ -92,10 +99,14 @@ fn get_sorted_branches(repo: &Repository) -> Result<Vec<String>> {
             )
         })
         .collect();
+
     branch_name_and_commit.sort_by(|(_, a), (_, b)| a.time().partial_cmp(&b.time()).unwrap());
-    Ok(branch_name_and_commit
+
+    let branches = branch_name_and_commit
         .iter()
         .take(20)
         .map(|(name, _)| name.to_string())
-        .collect())
+        .collect();
+
+    Ok(branches)
 }
