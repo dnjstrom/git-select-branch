@@ -101,6 +101,7 @@ fn get_sorted_branches(repo: &Repository) -> Result<Vec<String>> {
         .collect();
 
     branch_name_and_commit.sort_by(|(_, a), (_, b)| a.time().partial_cmp(&b.time()).unwrap());
+    branch_name_and_commit.reverse();
 
     let branches = branch_name_and_commit
         .iter()
