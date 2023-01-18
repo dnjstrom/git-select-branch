@@ -10,8 +10,11 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.68"
-dialoguer = "0.8.0"
+dialoguer = {version = "0.10.2", features = ["fuzzy-select"]}
+anyhow = {version = "1.0.68", features = ["backtrace"]}
 expect-exit = "0.5.2"
 git2 = "0.16.0"
+ctrlc = "3.2.4"
+
+[dev-dependencies]
 tempfile = "3.3.0"
