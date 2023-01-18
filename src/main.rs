@@ -5,7 +5,6 @@ use std::env;
 use anyhow::Result;
 use dialoguer::{theme::ColorfulTheme, Select};
 use expect_exit::Expected;
-use git2::build::CheckoutBuilder;
 use git2::{BranchType, Commit, Reference, Repository};
 
 /// Tiny CLI utility to checkout a recent git branch interactively.
@@ -44,11 +43,11 @@ fn main() -> Result<()> {
 fn checkout(repo: Repository, branch_name: &String) -> Result<()> {
     let ref_name = format!("refs/heads/{}", branch_name);
 
-    repo.set_head(&ref_name)
-        .or_exit_(format!("Could not set head to {}", ref_name).as_str());
+    let branch_object = repo.revparse_single(ref_name.as_str())?;
 
-    repo.checkout_head(Some(&mut CheckoutBuilder::default()))
-        .or_exit_(format!("Unable to check out branch {}", branch_name).as_str());
+    repo.checkout_tree(&branch_object, None)?;
+
+    repo.set_head(ref_name.as_str())?;
 
     Ok(())
 }
