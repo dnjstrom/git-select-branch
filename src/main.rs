@@ -1,14 +1,17 @@
 extern crate core;
 
-use std::convert::TryFrom;
+use std::cmp::Reverse;
+use std::env;
 use std::io::ErrorKind;
-use std::{env, usize};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use dialoguer::theme::{ColorfulTheme, SimpleTheme, Theme};
 use dialoguer::{FuzzySelect, Select};
 use expect_exit::Expected;
 use git2::{BranchType, Commit, Reference, Repository};
+
+use config::Config;
 
 /// Tiny CLI utility to checkout a recent git branch interactively.
 fn main() -> Result<()> {
@@ -82,10 +85,10 @@ fn dialoguer_reset_cursor_hack() {
     let _ = term.show_cursor();
 }
 
-fn match_theme_config(theme_name: &str) -> Result<Box<dyn Theme>> {
+fn match_theme_config(theme_name: &str) -> Result<Arc<dyn Theme>> {
     match theme_name {
-        "colorful" => Ok(Box::new(ColorfulTheme::default())),
-        "simple" => Ok(Box::new(SimpleTheme)),
+        "colorful" => Ok(Arc::new(ColorfulTheme::default())),
+        "simple" => Ok(Arc::new(SimpleTheme)),
         value => Err(anyhow!(
             "{} is not a valid theme, expected one of \"colorful\", \"simple\"",
             value
@@ -137,7 +140,10 @@ fn get_current_branch(repo: &Repository) -> Result<Option<String>> {
 
 fn get_sorted_branches(config: &Config, repo: &Repository) -> Result<Vec<String>> {
     let branch_refs: Vec<Reference> = repo
-        .branches(Some(BranchType::Local))?
+        .branches(match config.show_remote_branches {
+            true => None,
+            false => Some(BranchType::Local),
+        })?
         .filter(|r| r.is_ok())
         .map(|r| r.unwrap().0.into_reference())
         .collect();
@@ -153,13 +159,18 @@ fn get_sorted_branches(config: &Config, repo: &Repository) -> Result<Vec<String>
         })
         .collect();
 
-    branch_name_and_commit.sort_by(|(_, a), (_, b)| a.time().partial_cmp(&b.time()).unwrap());
-    branch_name_and_commit.reverse();
+    branch_name_and_commit.sort_by_key(|(_, commit)| Reverse(commit.time()));
 
-    let iter = branch_name_and_commit.iter();
     let branches = match config.limit {
-        Some(limit) => iter.take(limit).map(|(name, _)| name.to_string()).collect(),
-        None => iter.map(|(name, _)| name.to_string()).collect(),
+        Some(limit) => branch_name_and_commit
+            .iter()
+            .take(limit)
+            .map(|(name, _)| name.to_string())
+            .collect(),
+        None => branch_name_and_commit
+            .iter()
+            .map(|(name, _)| name.to_string())
+            .collect(),
     };
     Ok(branches)
 }
@@ -167,142 +178,43 @@ fn get_sorted_branches(config: &Config, repo: &Repository) -> Result<Vec<String>
 #[cfg(test)]
 #[macro_use]
 mod test;
+mod config;
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
-    use std::io::prelude::*;
-    use std::path::Path;
-
-    use git2::Repository;
-
-    use tempfile::TempDir;
-
+    use crate::config::Config;
+    use crate::test::RepoFixture;
     use crate::{get_branch_options, get_sorted_branches};
-
-    fn setup_repo(td: &TempDir, repo: &Repository) {
-        let mut index = repo.index().unwrap();
-        File::create(&td.path().join("foo"))
-            .unwrap()
-            .write_all(b"foo")
-            .unwrap();
-        index.add_path(Path::new("foo")).unwrap();
-        let id = index.write_tree().unwrap();
-        let sig = repo.signature().unwrap();
-        let tree = repo.find_tree(id).unwrap();
-        let parent = repo
-            .find_commit(repo.head().unwrap().target().unwrap())
-            .unwrap();
-        let second_branch = repo.branch("second", &parent, false).unwrap();
-        assert!(second_branch.name().unwrap().is_some());
-        repo.commit(
-            second_branch.into_reference().name(),
-            &sig,
-            &sig,
-            "second\n\nbody",
-            &tree,
-            &[&parent],
-        )
-        .unwrap();
-        let third_branch = repo.branch("third", &parent, false).unwrap();
-        assert!(third_branch.name().unwrap().is_some());
-        let _ = repo
-            .commit(
-                third_branch.into_reference().name(),
-                &sig,
-                &sig,
-                "third\n\nbody",
-                &tree,
-                &[&parent],
-            )
-            .unwrap();
-    }
 
     #[test]
     fn test_get_sorted_branches() {
-        let (td, repo) = crate::test::repo_init();
-        setup_repo(&td, &repo);
-        let sorted_branches = get_sorted_branches(&repo);
+        let fixture = RepoFixture::new();
+        fixture.create_branch("main", 10).unwrap();
+        fixture.create_branch("second", 20).unwrap();
+        fixture.create_branch("third", 30).unwrap();
+
+        let mut config = &fixture.config();
+
+        let sorted_branches = get_sorted_branches(&fixture.config().unwrap(), fixture.repo());
         assert_eq!(sorted_branches.unwrap(), vec!["third", "second", "main"]);
     }
 
     #[test]
-    fn test_get_branch_options() {
-        let (td, repo) = crate::test::repo_init();
-        setup_repo(&td, &repo);
+    fn test_get_sorted_branches_including_remote() {
+        let fixture = RepoFixture::new();
+        fixture.create_branch("a", 10).unwrap();
+        fixture.create_branch("b", 20).unwrap();
+        fixture.create_branch("c", 5).unwrap();
+        fixture.create_remote_branch("origin", "d", 30).unwrap();
+        let mut config = Config::default();
+        config.show_remote_branches = true;
+        let sorted_branches = get_sorted_branches(&config, &fixture.repo());
+        assert_eq!(sorted_branches.unwrap(), vec!["origin/d", "b", "a", "c"])
+    }
 
+    #[test]
+    fn test_get_branch_options() {
         let options = get_branch_options(vec!["a", "b", "c"], Some("c"));
         assert_eq!(options, vec!["c", "a", "b"])
     }
-}
-
-struct Config {
-    theme: Box<dyn Theme>,
-    fuzzy: bool,
-    limit: Option<usize>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            theme: Box::new(ColorfulTheme::default()),
-            fuzzy: false,
-            limit: Some(20usize),
-        }
-    }
-}
-
-impl Config {
-    fn from_git_config(git_config: &git2::Config) -> Result<Config> {
-        let mut config = Config::default();
-        if let Some(value) = map_git2_not_found_to_none(git_config.get_bool("select-branch.fuzzy"))
-            .with_context(|| "Error parsing select-branch.fuzzy")?
-        {
-            config.fuzzy = value;
-        }
-
-        if let Some(value) = map_git2_not_found_to_none(git_config.get_str("select-branch.theme"))
-            .with_context(|| "Error parsing select-branch.theme")?
-        {
-            config.theme =
-                match_theme_config(value).with_context(|| "Could not parse theme configuration")?;
-        }
-
-        if let Some("none") = map_git2_not_found_to_none(git_config.get_str("select-branch.limit"))
-            .with_context(|| "Error parsing select-branch.limit")?
-        {
-            config.limit = None
-        } else if let Some(limit) =
-            map_git2_not_found_to_none(git_config.get_i64("select-branch.limit"))
-                .with_context(|| "Error parsing select-branch.limit")?
-        {
-            if limit <= 0 {
-                return Err(anyhow!(
-                    "\"{}\" is not a valid \"select-branch.limit\" value.\n\
-                    The value must be either a positive integer, or \"none\". e.g.:\n\
-                    > git config --global select-branch.limit none\n\
-                    or\n\
-                    > git config --global select-branch.limit 20",
-                    limit
-                ));
-            }
-            config.limit = Some(
-                usize::try_from(limit)
-                    .with_context(|| format!("Can't convert {:?} to usize", limit))?,
-            )
-        }
-
-        Ok(config)
-    }
-}
-
-fn map_git2_not_found_to_none<E>(
-    config_result: Result<E, git2::Error>,
-) -> core::result::Result<Option<E>, git2::Error> {
-    config_result
-        .map(|value| Some(value))
-        .or_else(|err| match err.code() {
-            git2::ErrorCode::NotFound => Ok(None),
-            _ => Err(err),
-        })
 }
