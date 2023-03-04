@@ -1,6 +1,8 @@
 extern crate core;
 
+use std::cell::Ref;
 use std::cmp::Reverse;
+use std::fmt::{Display, Formatter, Pointer};
 use std::io::ErrorKind;
 use std::sync::Arc;
 use std::{env, process};
@@ -9,7 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use dialoguer::theme::{ColorfulTheme, SimpleTheme, Theme};
 use dialoguer::{FuzzySelect, Select};
 use expect_exit::Expected;
-use git2::{BranchType, Commit, Reference, Repository};
+use git2::{BranchType, Commit, Reference, Repository, Signature, Time};
 use thiserror::Error;
 
 use config::Config;
@@ -44,15 +46,13 @@ fn run_tui() -> Result<()> {
         .with_context(|| "Could not get git config")?
         .snapshot()
         .with_context(|| "Could not create a snapshot of git config")?;
+
     let config = Config::from_git_config(&git_config)
         .with_context(|| "Error reading configuration from git")?;
 
     let current_branch = get_current_branch(&repo)?;
-    let sorted_branches = get_sorted_branches(&config, &repo)?;
-    let options = get_branch_options(
-        sorted_branches.iter().map(|s| s.as_str()).collect(),
-        current_branch.as_deref(),
-    );
+    let sorted_choices = get_sorted_choices(&config, &repo)?;
+    let options = get_branch_options(sorted_choices.clone(), current_branch.as_deref());
 
     ctrlc::set_handler(move || {
         dialoguer_reset_cursor_hack();
@@ -77,8 +77,10 @@ fn run_tui() -> Result<()> {
         Ok(option) => match option {
             Some(selection) => {
                 let selected_branch = &options[selection];
-                checkout(repo, selected_branch)?;
-                Ok(())
+                match selected_branch {
+                    Choice::Default(_) => Err(SelectBranchError::Aborted.into()),
+                    Choice::Branch(branch_info) => checkout(repo, branch_info),
+                }
             }
             None => Err(SelectBranchError::Aborted.into()),
         },
@@ -116,8 +118,44 @@ fn match_theme_config(theme_name: &str) -> Result<Arc<dyn Theme>> {
     }
 }
 
-fn checkout(repo: Repository, branch_name: &String) -> Result<()> {
-    let ref_name = format!("refs/heads/{branch_name}");
+#[derive(Debug, Clone)]
+struct BranchInfo {
+    pub shorthand: String,
+    pub branch_type: BranchType,
+    pub commit_time: Time,
+    pub commit_message: Option<String>,
+    pub commit_author_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+enum Choice {
+    Default(String),
+    Branch(BranchInfo),
+}
+
+impl Display for Choice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Choice::Default(s) => write!(f, "{}", s),
+            Choice::Branch(branch_info) => {
+                write!(f, "{}", branch_info.shorthand,)
+            }
+        }
+    }
+}
+
+impl From<BranchInfo> for Choice {
+    fn from(value: BranchInfo) -> Self {
+        Choice::Branch(value)
+    }
+}
+
+fn checkout(repo: Repository, branch_info: &BranchInfo) -> Result<()> {
+    let shorthand = branch_info.shorthand.as_str();
+    let ref_name = match branch_info.branch_type {
+        BranchType::Local => format!("refs/heads/{shorthand}"),
+        BranchType::Remote => format!("refs/remotes/{shorthand}"),
+    };
 
     let branch_object = repo.revparse_single(ref_name.as_str())?;
 
@@ -128,24 +166,27 @@ fn checkout(repo: Repository, branch_name: &String) -> Result<()> {
     Ok(())
 }
 
-fn get_branch_options(sorted_branches: Vec<&str>, current_branch: Option<&str>) -> Vec<String> {
-    let all_branches: Vec<String> = sorted_branches
-        .into_iter()
-        .filter(|s| match current_branch {
-            Some(branch) => *s != branch,
-            None => true,
-        })
-        .map(|s| s.to_string())
-        .collect();
+fn get_branch_options(
+    sorted_branches: Vec<BranchInfo>,
+    current_branch: Option<&str>,
+) -> Vec<Choice> {
+    let mut branches = sorted_branches;
+    if let Some(branch) = current_branch {
+        branches = branches
+            .iter()
+            .filter(|c| c.shorthand != branch)
+            .map(Clone::clone)
+            .collect();
+    }
 
     let mut options = Vec::new();
 
-    match current_branch {
-        Some(branch) => options.push(branch.to_string()),
-        None => options.push("<no branch>".to_string()),
-    }
+    options.push(Choice::Default(match current_branch {
+        Some(branch) => branch.to_string(),
+        None => "<no branch>".to_string(),
+    }));
 
-    options.extend(all_branches);
+    options.extend(branches.iter().map(|b| Choice::Branch(b.clone())));
 
     options
 }
@@ -158,39 +199,42 @@ fn get_current_branch(repo: &Repository) -> Result<Option<String>> {
         .map(|s| s.to_string()))
 }
 
-fn get_sorted_branches(config: &Config, repo: &Repository) -> Result<Vec<String>> {
-    let branch_refs: Vec<Reference> = repo
+fn get_choices(config: &Config, repo: &Repository) -> Result<Vec<BranchInfo>> {
+    Ok(repo
         .branches(match config.show_remote_branches {
             true => None,
             false => Some(BranchType::Local),
         })?
-        .filter(|r| r.is_ok())
-        .map(|r| r.unwrap().0.into_reference())
-        .collect();
-
-    let mut branch_name_and_commit: Vec<(String, Commit)> = branch_refs
-        .iter()
-        .filter_map(|r| match r.shorthand() {
-            Some(shorthand) => match r.peel_to_commit() {
-                Ok(commit) => Some((shorthand.to_string(), commit)),
-                Err(_) => None,
-            },
-            None => None,
+        .filter_map(|r| match r {
+            Ok((branch, branch_type)) => {
+                let reference = branch.into_reference();
+                match reference.shorthand() {
+                    Some(shorthand) => match reference.peel_to_commit() {
+                        Ok(commit) => Some(BranchInfo {
+                            shorthand: shorthand.to_string(),
+                            branch_type: branch_type.clone(),
+                            commit_message: commit.message().map(|s| s.to_string()),
+                            commit_author_name: commit.author().name().map(ToString::to_string),
+                            commit_time: commit.time(),
+                        }),
+                        Err(_) => None,
+                    },
+                    None => None,
+                }
+            }
+            Err(_) => None,
         })
-        .collect();
+        .collect())
+}
 
-    branch_name_and_commit.sort_by_key(|(_, commit)| Reverse(commit.time()));
+fn get_sorted_choices(config: &Config, repo: &Repository) -> Result<Vec<BranchInfo>> {
+    let mut choices = get_choices(config, repo)?;
+
+    choices.sort_by_key(|choice| Reverse(choice.commit_time));
 
     let branches = match config.limit {
-        Some(limit) => branch_name_and_commit
-            .iter()
-            .take(limit)
-            .map(|(name, _)| name.to_string())
-            .collect(),
-        None => branch_name_and_commit
-            .iter()
-            .map(|(name, _)| name.to_string())
-            .collect(),
+        Some(limit) => choices.iter().take(limit).map(|c| c.clone()).collect(),
+        None => choices,
     };
     Ok(branches)
 }
@@ -204,17 +248,16 @@ mod config;
 mod tests {
     use crate::config::Config;
     use crate::test::RepoFixture;
-    use crate::{get_branch_options, get_sorted_branches};
-    use git2::SubmoduleUpdate::Default;
+    use crate::{get_branch_options, get_sorted_choices};
 
     #[test]
-    fn test_get_sorted_branches() {
+    fn test_get_sorted_branches_default_config() {
         let fixture = RepoFixture::new();
         fixture.create_branch("main", 10).unwrap();
         fixture.create_branch("second", 20).unwrap();
         fixture.create_branch("third", 30).unwrap();
 
-        let sorted_branches = get_sorted_branches(&Config::default(), &fixture.repo);
+        let sorted_branches = get_sorted_choices(&Default::default(), &fixture.repo);
         assert_eq!(sorted_branches.unwrap(), vec!["third", "second", "main"]);
     }
 
@@ -229,8 +272,40 @@ mod tests {
             show_remote_branches: true,
             ..Default::default()
         };
-        let sorted_branches = get_sorted_branches(&config, &fixture.repo);
+        let sorted_branches = get_sorted_choices(&config, &fixture.repo);
         assert_eq!(sorted_branches.unwrap(), vec!["origin/d", "b", "a", "c"])
+    }
+
+    #[test]
+    fn test_get_sorted_branches_limit() {
+        let fixture = RepoFixture::new();
+        fixture.create_branch("a", 1).unwrap();
+        fixture.create_branch("b", 2).unwrap();
+        fixture.create_branch("c", 3).unwrap();
+        let config = Config {
+            limit: Some(2),
+            ..Default::default()
+        };
+        let sorted_branches = get_sorted_choices(&config, &fixture.repo).unwrap();
+        assert_eq!(sorted_branches, vec!["c", "b"])
+    }
+
+    #[test]
+    fn test_get_sorted_branches_unlimited() {
+        let fixture = RepoFixture::new();
+        let mut expected_sorted_branches = vec![];
+        for i in (0..100).rev() {
+            let branch_name = format!("a-{}", i);
+            expected_sorted_branches.push(branch_name.clone());
+            fixture.create_branch(branch_name.as_str(), i).unwrap();
+        }
+        let config = Config {
+            limit: None,
+            ..Default::default()
+        };
+        let sorted_branches = get_sorted_choices(&config, &fixture.repo).unwrap();
+        assert_eq!(sorted_branches.len(), 100);
+        assert_eq!(sorted_branches, expected_sorted_branches)
     }
 
     #[test]
