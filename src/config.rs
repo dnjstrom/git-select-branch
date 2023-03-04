@@ -73,7 +73,7 @@ impl Config {
             }
             config.limit = Some(
                 usize::try_from(limit)
-                    .with_context(|| format!("Can't convert {:?} to usize", limit))?,
+                    .with_context(|| format!("Can't convert {limit:?} to usize"))?,
             )
         }
 

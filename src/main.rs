@@ -37,7 +37,7 @@ pub enum SelectBranchError {
 fn run_tui() -> Result<()> {
     let current_dir = env::current_dir().or_exit_("Could not get current directory");
     let repo = Repository::discover(current_dir.as_path())
-        .or_exit_(format!("No git repository discovered at {:?}", current_dir).as_str());
+        .or_exit_(format!("No git repository discovered at {current_dir:?}").as_str());
 
     let git_config = repo
         .config()
@@ -117,7 +117,7 @@ fn match_theme_config(theme_name: &str) -> Result<Arc<dyn Theme>> {
 }
 
 fn checkout(repo: Repository, branch_name: &String) -> Result<()> {
-    let ref_name = format!("refs/heads/{}", branch_name);
+    let ref_name = format!("refs/heads/{branch_name}");
 
     let branch_object = repo.revparse_single(ref_name.as_str())?;
 
@@ -205,6 +205,7 @@ mod tests {
     use crate::config::Config;
     use crate::test::RepoFixture;
     use crate::{get_branch_options, get_sorted_branches};
+    use git2::SubmoduleUpdate::Default;
 
     #[test]
     fn test_get_sorted_branches() {
@@ -224,8 +225,10 @@ mod tests {
         fixture.create_branch("b", 20).unwrap();
         fixture.create_branch("c", 5).unwrap();
         fixture.create_remote_branch("origin", "d", 30).unwrap();
-        let mut config = Config::default();
-        config.show_remote_branches = true;
+        let config = Config {
+            show_remote_branches: true,
+            ..Default::default()
+        };
         let sorted_branches = get_sorted_branches(&config, &fixture.repo);
         assert_eq!(sorted_branches.unwrap(), vec!["origin/d", "b", "a", "c"])
     }

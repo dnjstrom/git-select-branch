@@ -43,10 +43,10 @@ impl RepoFixture {
         let tree = self.repo.find_tree(tree_id)?;
 
         let _ = self.repo.commit(
-            Some(format!("refs/heads/{}", name).as_str()),
+            Some(format!("refs/heads/{name}").as_str()),
             &signature,
             &signature,
-            format!("commit at {:?}", time).as_str(),
+            format!("commit at {time:?}").as_str(),
             &tree,
             &[],
         )?;
@@ -70,10 +70,10 @@ impl RepoFixture {
         let tree = self.repo.find_tree(tree_id)?;
 
         let _ = self.repo.commit(
-            Some(format!("refs/remotes/{}/{}", remote_name, name).as_str()),
+            Some(format!("refs/remotes/{remote_name}/{name}").as_str()),
             &signature,
             &signature,
-            format!("commit at {:?}", time).as_str(),
+            format!("commit at {time:?}").as_str(),
             &tree,
             &[],
         )?;
