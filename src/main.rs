@@ -1,20 +1,40 @@
 extern crate core;
 
 use std::cmp::Reverse;
-use std::env;
 use std::io::ErrorKind;
 use std::sync::Arc;
+use std::{env, process};
 
 use anyhow::{anyhow, Context, Result};
 use dialoguer::theme::{ColorfulTheme, SimpleTheme, Theme};
 use dialoguer::{FuzzySelect, Select};
 use expect_exit::Expected;
 use git2::{BranchType, Commit, Reference, Repository};
+use thiserror::Error;
 
 use config::Config;
 
 /// Tiny CLI utility to checkout a recent git branch interactively.
 fn main() -> Result<()> {
+    match run_tui() {
+        Ok(()) => Ok(()),
+        Err(e) => match e.downcast_ref::<SelectBranchError>() {
+            Some(SelectBranchError::Aborted) => process::exit(1),
+            Some(SelectBranchError::Interrupted) => process::exit(2),
+            None => Err(e),
+        },
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum SelectBranchError {
+    #[error("Interaction aborted")]
+    Aborted,
+    #[error("Interaction interrupted")]
+    Interrupted,
+}
+
+fn run_tui() -> Result<()> {
     let current_dir = env::current_dir().or_exit_("Could not get current directory");
     let repo = Repository::discover(current_dir.as_path())
         .or_exit_(format!("No git repository discovered at {:?}", current_dir).as_str());
@@ -60,13 +80,13 @@ fn main() -> Result<()> {
                 checkout(repo, selected_branch)?;
                 Ok(())
             }
-            None => Err(anyhow!("Aborted.")),
+            None => Err(SelectBranchError::Aborted.into()),
         },
         // If err, figure out if it was a SIGINT and ...
         Err(err) => match err.downcast_ref::<std::io::Error>() {
             Some(io_err) => match io_err.kind() {
                 // ... if so replace err with a shorter version.
-                ErrorKind::Interrupted => Err(anyhow!("Interrupted")),
+                ErrorKind::Interrupted => Err(SelectBranchError::Interrupted.into()),
                 _ => Err(err),
             },
             None => Err(err),
@@ -193,9 +213,7 @@ mod tests {
         fixture.create_branch("second", 20).unwrap();
         fixture.create_branch("third", 30).unwrap();
 
-        let mut config = &fixture.config();
-
-        let sorted_branches = get_sorted_branches(&fixture.config().unwrap(), fixture.repo());
+        let sorted_branches = get_sorted_branches(&Config::default(), &fixture.repo);
         assert_eq!(sorted_branches.unwrap(), vec!["third", "second", "main"]);
     }
 
@@ -208,7 +226,7 @@ mod tests {
         fixture.create_remote_branch("origin", "d", 30).unwrap();
         let mut config = Config::default();
         config.show_remote_branches = true;
-        let sorted_branches = get_sorted_branches(&config, &fixture.repo());
+        let sorted_branches = get_sorted_branches(&config, &fixture.repo);
         assert_eq!(sorted_branches.unwrap(), vec!["origin/d", "b", "a", "c"])
     }
 

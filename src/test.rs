@@ -1,7 +1,6 @@
 use anyhow::Result;
 use git2::{Repository, RepositoryInitOptions, Signature, Time};
 
-use crate::config::Config;
 use tempfile::TempDir;
 
 pub fn repo_init() -> (TempDir, Repository) {
@@ -19,26 +18,17 @@ pub fn repo_init() -> (TempDir, Repository) {
 
 #[derive()]
 pub struct RepoFixture {
-    tempdir: TempDir,
-    repo: Repository,
+    pub _tempdir: TempDir,
+    pub repo: Repository,
 }
 
 impl RepoFixture {
     pub fn new() -> Self {
         let (tempdir, repo) = repo_init();
-        Self { tempdir, repo }
-    }
-
-    pub fn tempdir(&self) -> &TempDir {
-        &self.tempdir
-    }
-
-    pub fn repo(&self) -> &Repository {
-        &self.repo
-    }
-
-    pub fn config(&self) -> Result<Config> {
-        Ok(Config::from_git_config(&self.repo.config()?.snapshot()?)?)
+        Self {
+            _tempdir: tempdir,
+            repo,
+        }
     }
 
     pub fn create_branch(&self, name: &str, commit_time_seconds: i64) -> Result<()> {
