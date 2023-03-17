@@ -28,6 +28,10 @@ cd git-select-branch
 cargo install --path .
 ```
 
+## Configuration
+
+### 
+
 ## Git alias
 
 Add the following section to your `~/.gitconfig`:
