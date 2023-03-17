@@ -1,8 +1,7 @@
 extern crate core;
 
-use std::cell::Ref;
 use std::cmp::Reverse;
-use std::fmt::{Display, Formatter, Pointer};
+use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
 use std::sync::Arc;
 use std::{env, process};
@@ -11,7 +10,7 @@ use anyhow::{anyhow, Context, Result};
 use dialoguer::theme::{ColorfulTheme, SimpleTheme, Theme};
 use dialoguer::{FuzzySelect, Select};
 use expect_exit::Expected;
-use git2::{BranchType, Commit, Reference, Repository, Signature, Time};
+use git2::{BranchType, Repository, Time};
 use thiserror::Error;
 
 use config::Config;
@@ -246,9 +245,11 @@ mod config;
 
 #[cfg(test)]
 mod tests {
+    use git2::Time;
+
     use crate::config::Config;
     use crate::test::RepoFixture;
-    use crate::{get_branch_options, get_sorted_choices};
+    use crate::{get_branch_options, get_sorted_choices, BranchInfo, Choice};
 
     #[test]
     fn test_get_sorted_branches_default_config() {
@@ -257,8 +258,12 @@ mod tests {
         fixture.create_branch("second", 20).unwrap();
         fixture.create_branch("third", 30).unwrap();
 
-        let sorted_branches = get_sorted_choices(&Default::default(), &fixture.repo);
-        assert_eq!(sorted_branches.unwrap(), vec!["third", "second", "main"]);
+        let sorted_branches: Vec<String> = get_sorted_choices(&Default::default(), &fixture.repo)
+            .unwrap()
+            .iter()
+            .map(|branch| branch.shorthand.clone())
+            .collect();
+        assert_eq!(sorted_branches, vec!["third", "second", "main"]);
     }
 
     #[test]
@@ -272,8 +277,12 @@ mod tests {
             show_remote_branches: true,
             ..Default::default()
         };
-        let sorted_branches = get_sorted_choices(&config, &fixture.repo);
-        assert_eq!(sorted_branches.unwrap(), vec!["origin/d", "b", "a", "c"])
+        let sorted_branches: Vec<String> = get_sorted_choices(&config, &fixture.repo)
+            .unwrap()
+            .iter()
+            .map(|branch| branch.shorthand.clone())
+            .collect();
+        assert_eq!(sorted_branches, vec!["origin/d", "b", "a", "c"])
     }
 
     #[test]
@@ -286,7 +295,11 @@ mod tests {
             limit: Some(2),
             ..Default::default()
         };
-        let sorted_branches = get_sorted_choices(&config, &fixture.repo).unwrap();
+        let sorted_branches: Vec<String> = get_sorted_choices(&config, &fixture.repo)
+            .unwrap()
+            .iter()
+            .map(|branch| branch.shorthand.clone())
+            .collect();
         assert_eq!(sorted_branches, vec!["c", "b"])
     }
 
@@ -303,14 +316,46 @@ mod tests {
             limit: None,
             ..Default::default()
         };
-        let sorted_branches = get_sorted_choices(&config, &fixture.repo).unwrap();
+        let sorted_branches: Vec<String> = get_sorted_choices(&config, &fixture.repo)
+            .unwrap()
+            .iter()
+            .map(|branch| branch.shorthand.clone())
+            .collect();
         assert_eq!(sorted_branches.len(), 100);
         assert_eq!(sorted_branches, expected_sorted_branches)
     }
 
     #[test]
     fn test_get_branch_options() {
-        let options = get_branch_options(vec!["a", "b", "c"], Some("c"));
+        let a = BranchInfo {
+            shorthand: "a".to_string(),
+            branch_type: git2::BranchType::Local,
+            commit_time: Time::new(0, 0),
+            commit_author_name: None,
+            commit_message: None,
+        };
+        let b = BranchInfo {
+            shorthand: "b".to_string(),
+            branch_type: git2::BranchType::Local,
+            commit_time: Time::new(0, 0),
+            commit_author_name: None,
+            commit_message: None,
+        };
+        let c = BranchInfo {
+            shorthand: "c".to_string(),
+            branch_type: git2::BranchType::Local,
+            commit_time: Time::new(0, 0),
+            commit_author_name: None,
+            commit_message: None,
+        };
+
+        let options: Vec<String> = get_branch_options(vec![a, b, c], Some("c"))
+            .iter()
+            .map(|choice| match choice {
+                Choice::Default(name) => name.clone(),
+                Choice::Branch(branch_info) => branch_info.shorthand.clone(),
+            })
+            .collect();
         assert_eq!(options, vec!["c", "a", "b"])
     }
 }
