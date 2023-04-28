@@ -96,7 +96,7 @@ fn run_tui() -> Result<()> {
 }
 
 /// `dialoguer` doesn't clean up your term if it's aborted via e.g. `SIGINT` or other exceptions:
-/// https://github.com/console-rs/dialoguer/issues/188.
+/// <https://github.com/console-rs/dialoguer/issues/188>.
 ///
 /// `dialoguer`, as a library, doesn't want to mess with signal handlers,
 /// but we, as an application, are free to mess with signal handlers if we feel like it, since we

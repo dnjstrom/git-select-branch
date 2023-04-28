@@ -1,7 +1,10 @@
 [package]
 name = "git-select-branch"
 description = "Tiny CLI utility to checkout a recent git branch interactively"
-version = "0.2.0"
+documentation = "https://docs.rs/crate/git-select-branch"
+repository = "https://github.com/dnjstrom/git-select-branch"
+homepage = "https://github.com/dnjstrom/git-select-branch"
+version = "0.2.1"
 authors = ["Daniel Ström <D@nielstrom.se>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
