@@ -4,7 +4,7 @@ description = "Tiny CLI utility to checkout a recent git branch interactively"
 documentation = "https://docs.rs/crate/git-select-branch"
 repository = "https://github.com/dnjstrom/git-select-branch"
 homepage = "https://github.com/dnjstrom/git-select-branch"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Daniel Ström <D@nielstrom.se>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -16,7 +16,7 @@ license = "MIT OR Apache-2.0"
 dialoguer = {version = "0.10.2", features = ["fuzzy-select"]}
 anyhow = {version = "1.0.68", features = ["backtrace"]}
 expect-exit = "0.5.2"
-git2 = "0.16.0"
+git2 = { version = "0.16.0", features = ["vendored-openssl"] }
 ctrlc = "3.2.4"
 thiserror = "1.0.38"
 
