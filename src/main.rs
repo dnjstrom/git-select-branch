@@ -6,7 +6,7 @@ use std::io::ErrorKind;
 use std::sync::Arc;
 use std::{env, process};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use dialoguer::theme::{ColorfulTheme, SimpleTheme, Theme};
 use dialoguer::{FuzzySelect, Select};
 use expect_exit::Expected;
@@ -17,13 +17,28 @@ use config::Config;
 
 /// Tiny CLI utility to checkout a recent git branch interactively.
 fn main() -> Result<()> {
-    match run_tui() {
-        Ok(()) => Ok(()),
-        Err(e) => match e.downcast_ref::<SelectBranchError>() {
-            Some(SelectBranchError::Aborted) => process::exit(1),
-            Some(SelectBranchError::Interrupted) => process::exit(2),
-            None => Err(e),
+    let args: Vec<String> = env::args().collect();
+    match args.len() {
+        1 => match run_tui() {
+            Ok(()) => Ok(()),
+            Err(e) => match e.downcast_ref::<SelectBranchError>() {
+                Some(SelectBranchError::Aborted) => process::exit(1),
+                Some(SelectBranchError::Interrupted) => process::exit(2),
+                None => Err(e),
+            },
         },
+        2 => {
+           if ( args[1] == "--version" ) | ( args[1] == "-V" ) {
+               println!("{}", env!("CARGO_PKG_VERSION"));
+               Ok(())
+           } else {
+               Err(Error::msg(format!("Command not recognised {}", args[1])))
+           }
+        }
+        _ =>
+            {
+                Err(Error::msg(format!("Commands not recognised {:?}", &args[1..])))
+            }
     }
 }
 
@@ -104,6 +119,9 @@ fn run_tui() -> Result<()> {
 fn dialoguer_reset_cursor_hack() {
     let term = dialoguer::console::Term::stdout();
     let _ = term.show_cursor();
+    // Exit 130 is the standard exit code for a process that has been interrupted (128 + SIGINT)
+    process::exit(130);
+
 }
 
 fn match_theme_config(theme_name: &str) -> Result<Arc<dyn Theme>> {
