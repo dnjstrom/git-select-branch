@@ -28,17 +28,17 @@ fn main() -> Result<()> {
             },
         },
         2 => {
-           if ( args[1] == "--version" ) | ( args[1] == "-V" ) {
-               println!("{}", env!("CARGO_PKG_VERSION"));
-               Ok(())
-           } else {
-               Err(Error::msg(format!("Command not recognised {}", args[1])))
-           }
-        }
-        _ =>
-            {
-                Err(Error::msg(format!("Commands not recognised {:?}", &args[1..])))
+            if args[1] == "--version" {
+                println!("{}", env!("CARGO_PKG_VERSION"));
+                Ok(())
+            } else {
+                Err(Error::msg(format!("Command not recognized {}", args[1])))
             }
+        }
+        _ => Err(Error::msg(format!(
+            "Command not recognized {:?}",
+            &args[1..]
+        ))),
     }
 }
 
@@ -121,7 +121,6 @@ fn dialoguer_reset_cursor_hack() {
     let _ = term.show_cursor();
     // Exit 130 is the standard exit code for a process that has been interrupted (128 + SIGINT)
     process::exit(130);
-
 }
 
 fn match_theme_config(theme_name: &str) -> Result<Arc<dyn Theme>> {
