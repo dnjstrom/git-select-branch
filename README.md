@@ -48,11 +48,5 @@ Now you can simply type `git select-branch` to switch between branches.
 
 1. Bump the version in `Cargo.toml` and commit.
 2. Publish to crates.io by running `cargo publish`.
-3. Run `./scripts/prepare-release-files.sh`.
-4. Make a [new release](https://github.com/dnjstrom/git-select-branch/releases) including:
-    * The **version** from `Cargo.toml`
-    * The **file** at `./target/release/git-select-branch-mac.tar.gz`.
-5. Edit the [hombrew tap](https://github.com/dnjstrom/homebrew-git-select-branch/edit/master/Formula/git-select-branch.rb) with the new information:
-    * The **version** from `Cargo.toml`
-    * The **link** from the [release page](https://github.com/dnjstrom/git-select-branch/releases) 
-    * The **sha** from `./target/release/git-select-branch-mac.tar.gz.shasum`
+3. Add a tag with the same version as above and push it to automatically create a [release](https://github.com/dnjstrom/git-select-branch/releases).
+4. When the [release action](https://github.com/dnjstrom/git-select-branch/actions) has finished, update the version, urls and shasums in the [hombrew tap](https://github.com/dnjstrom/homebrew-git-select-branch/edit/master/Formula/git-select-branch.rb). 
